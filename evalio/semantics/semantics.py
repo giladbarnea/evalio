@@ -1,14 +1,13 @@
 from __future__ import annotations
-import openai
-from openai.embeddings_utils import (
-    get_embedding as openai_get_embedding,
-    cosine_similarity,
-    distances_from_embeddings,
-    indices_of_nearest_neighbors_from_distances,
-)
 
 import base64
 from typing import TYPE_CHECKING
+
+import openai
+from openai.embeddings_utils import (cosine_similarity,
+                                     distances_from_embeddings)
+from openai.embeddings_utils import get_embedding as openai_get_embedding
+from openai.embeddings_utils import indices_of_nearest_neighbors_from_distances
 
 if TYPE_CHECKING:
     import numpy
@@ -98,10 +97,11 @@ def create_clusters_from_embeddings(
 
 
 def visualize_embeddings(df: "pandas.DataFrame", *, embeddings_column, score_column, title=None):
+    from ast import literal_eval
+
+    import matplotlib
     import matplotlib.pyplot as plt
     from sklearn.manifold import TSNE
-    from ast import literal_eval
-    import matplotlib
 
     matrix = np.array(df[embeddings_column].apply(literal_eval).to_list())
     tsne = TSNE(n_components=2, perplexity=15, random_state=42, init='random', learning_rate=200)
@@ -120,8 +120,8 @@ def visualize_embeddings(df: "pandas.DataFrame", *, embeddings_column, score_col
 def visualize_embedding_clusters(
     df: "pandas.DataFrame", *, embeddings_column, target_cluster_column, score_column, n_clusters: int, title=None
 ):
-    from sklearn.manifold import TSNE
     import matplotlib.pyplot as plt
+    from sklearn.manifold import TSNE
 
     matrix = create_clusters_from_embeddings(
         df, embeddings_column=embeddings_column, target_cluster_column=target_cluster_column, n_clusters=n_clusters

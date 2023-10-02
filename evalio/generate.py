@@ -1,6 +1,9 @@
+import re
+from typing import Iterable
+
 import openai
 
-from llm_utils import util
+from evalio import util
 
 
 def generate_prompt_test_cases(prompt_template, *, cases_num=3) -> list[str]:
@@ -29,3 +32,22 @@ def generate_prompt_test_cases(prompt_template, *, cases_num=3) -> list[str]:
         messages.insert(-1, {"role": "user", "content": response_text})
 
     return test_cases
+
+
+def generate_comparison_metrics(better_text, worse_text) -> Iterable[str]:
+    message = (
+        "In what parameters is the 1st response better than the 2nd response?\n\n"
+        "1st response:\n"
+        '""\n' + better_text + "\n"
+        '""\n\n'
+        "2nd response:\n"
+        '""\n' + worse_text + "\n"
+        '""\n\n'
+    )
+    messages = [{"role": "user", "content": message}]
+    response = openai.ChatCompletion.create(model="gpt-4", messages=messages, temperature=0)
+    response_text = util.unquote(response.choices[0].message["content"]).strip()
+    metrics = []
+    for metric in map(re.Match.group, re.finditer(r"((?<=^\d\. )|(?<=^\d\d\. ))([^:]+)", response_text, re.MULTILINE)):
+        metrics.append(metric.strip().replace("*", "").replace(".", "").replace(" ", "_").lower())
+    return metrics

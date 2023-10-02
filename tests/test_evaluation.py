@@ -1,4 +1,4 @@
-from llm_utils.evaluation import are_texts, ANSWER_COMPARISON_PROMPT_TEMPLATE
+from evalio.evaluation import ANSWER_COMPARISON_PROMPT_TEMPLATE, are_texts
 
 
 class TestAreTexts:

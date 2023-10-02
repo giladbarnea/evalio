@@ -1,5 +1,5 @@
-import pandas as pd
 import betterprompt
+import pandas as pd
 
 
 def compare_perplexity(text_1, text_2, *other_texts) -> pd.DataFrame:

@@ -1,6 +1,8 @@
-import openai
 from typing import NamedTuple
-from llm_utils import util
+
+import openai
+
+from evalio import util
 
 CORRECT_GRAMMAR_TEMPLATE = (
     'Is the following text grammatically correct? Ignore style and meaning, just strictly check grammar.\nIf it is'

@@ -1,8 +1,8 @@
 from typing import Literal
 
 import openai
-from llm_utils import util
 
+from evalio import util
 
 ANSWER_COMPARISON_PROMPT_TEMPLATE = '''Are these two answers {criterion}?
 

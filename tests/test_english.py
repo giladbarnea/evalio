@@ -1,5 +1,6 @@
-from llm_utils import english, semantics
 import pytest
+
+from evalio import english, semantics
 
 
 def test_is_correct_grammar_returns_true_for_correct_grammar():

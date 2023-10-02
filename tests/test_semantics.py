@@ -1,4 +1,4 @@
-from llm_utils import semantics
+from evalio import semantics
 
 
 def is_a_memoized_function(function) -> bool:

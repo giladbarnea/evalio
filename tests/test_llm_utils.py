@@ -1,4 +1,4 @@
-from llm_utils import __version__
+from evalio import __version__
 
 
 def test_version():
