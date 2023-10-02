@@ -1,3 +1,4 @@
+from __future__ import annotations
 import openai
 from openai.embeddings_utils import (
     get_embedding as openai_get_embedding,
@@ -6,14 +7,19 @@ from openai.embeddings_utils import (
     indices_of_nearest_neighbors_from_distances,
 )
 
-import pandas as pd
 import base64
-import numpy as np
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy
+    import pandas
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-ada-002"
 
 
-def get_embedding(text: str | np.ndarray[float]) -> np.ndarray[float]:
+def get_embedding(text: str | "numpy.ndarray[float]") -> "numpy.ndarray[float]":
+    import numpy as np
+
     if isinstance(text, np.ndarray):
         return text
     # We need to decode it ourselves, see https://github.com/EliahKagan/embed-encode
@@ -23,7 +29,7 @@ def get_embedding(text: str | np.ndarray[float]) -> np.ndarray[float]:
 
 
 def get_semantic_distance(
-    string_or_embedding_1: np.ndarray[float] | str, string_or_embedding_2: np.ndarray[float] | str
+    string_or_embedding_1: "numpy.ndarray[float]" | str, string_or_embedding_2: "numpy.ndarray[float]" | str
 ) -> int:
     string_1_embedding = get_embedding(string_or_embedding_1)
     string_2_embedding = get_embedding(string_or_embedding_2)
@@ -33,7 +39,7 @@ def get_semantic_distance(
 
 
 def get_nearest_neighbors(
-    strings: list[str | np.ndarray[float]], index_of_query_string: int, k_nearest_neighbors: int = 5
+    strings: list[str | "numpy.ndarray[float]"], index_of_query_string: int, k_nearest_neighbors: int = 5
 ):
     embeddings = [get_embedding(string) for string in strings]
     query_embedding = embeddings[index_of_query_string]
@@ -60,17 +66,19 @@ def get_nearest_neighbors(
     return indices_of_nearest_neighbors
 
 
-def embed_column(column: pd.Series) -> pd.Series:
+def embed_column(column: "pandas.Series") -> "pandas.Series":
     return column.apply(lambda x: get_embedding(x))
 
 
-def get_similarity_to_column(column: pd.Series, string_or_embedding: np.ndarray[float] | str) -> pd.Series:
+def get_similarity_to_column(
+    column: "pandas.Series", string_or_embedding: "numpy.ndarray[float]" | str
+) -> "pandas.Series":
     if isinstance(string_or_embedding, str):
         embedding = get_embedding(string_or_embedding)
     return column.apply(lambda x: cosine_similarity(x, embedding))
 
 
-def create_clusters_from_column(column: pd.Series, *, n_clusters: int, matrix: np.ndarray = None):
+def create_clusters_from_column(column: "pandas.Series", *, n_clusters: int, matrix: np.ndarray = None):
     from sklearn.cluster import KMeans
 
     if matrix is None:
@@ -81,7 +89,7 @@ def create_clusters_from_column(column: pd.Series, *, n_clusters: int, matrix: n
 
 
 def create_clusters_from_embeddings(
-    df: pd.DataFrame, *, embeddings_column, target_cluster_column, n_clusters: int
+    df: "pandas.DataFrame", *, embeddings_column, target_cluster_column, n_clusters: int
 ) -> np.ndarray:
     matrix = np.vstack(df[embeddings_column].values)
     labels = create_clusters_from_column(df[embeddings_column], n_clusters=n_clusters, matrix=matrix)
@@ -89,7 +97,7 @@ def create_clusters_from_embeddings(
     return matrix
 
 
-def visualize_embeddings(df: pd.DataFrame, *, embeddings_column, score_column, title=None):
+def visualize_embeddings(df: "pandas.DataFrame", *, embeddings_column, score_column, title=None):
     import matplotlib.pyplot as plt
     from sklearn.manifold import TSNE
     from ast import literal_eval
@@ -110,7 +118,7 @@ def visualize_embeddings(df: pd.DataFrame, *, embeddings_column, score_column, t
 
 
 def visualize_embedding_clusters(
-    df: pd.DataFrame, *, embeddings_column, target_cluster_column, score_column, n_clusters: int, title=None
+    df: "pandas.DataFrame", *, embeddings_column, target_cluster_column, score_column, n_clusters: int, title=None
 ):
     from sklearn.manifold import TSNE
     import matplotlib.pyplot as plt
@@ -155,7 +163,7 @@ Theme:
 
 
 def classify_clusters_with_llm(
-    df: pd.DataFrame,
+    df: "pandas.DataFrame",
     *,
     cluster_column,
     n_clusters: int,
@@ -195,7 +203,9 @@ def classify_clusters_with_llm(
         print("─" * 100)
 
 
-def search_reviews(df: pd.DataFrame, product_description: str, *, embeddings_column, top_n=3, pprint=True) -> pd.Series:
+def search_reviews(
+    df: "pandas.DataFrame", product_description: str, *, embeddings_column, top_n=3, pprint=True
+) -> "pandas.Series":
     """Not generic. Only works for the Amazon reviews dataset."""
     df["similarity"] = get_similarity_to_column(df[embeddings_column], product_description)
 
