@@ -4,8 +4,7 @@ import base64
 from typing import TYPE_CHECKING
 
 import openai
-from openai.embeddings_utils import (cosine_similarity,
-                                     distances_from_embeddings)
+from openai.embeddings_utils import cosine_similarity, distances_from_embeddings
 from openai.embeddings_utils import get_embedding as openai_get_embedding
 from openai.embeddings_utils import indices_of_nearest_neighbors_from_distances
 
@@ -13,7 +12,7 @@ if TYPE_CHECKING:
     import numpy
     import pandas
 
-DEFAULT_EMBEDDING_MODEL = "text-embedding-ada-002"
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
 
 
 def get_embedding(text: str | "numpy.ndarray[float]") -> "numpy.ndarray[float]":
@@ -39,14 +38,15 @@ def get_semantic_distance(
 
 def get_nearest_neighbors(
     strings: list[str | "numpy.ndarray[float]"], index_of_query_string: int, k_nearest_neighbors: int = 5
-):
+) -> dict[int, float]:
     embeddings = [get_embedding(string) for string in strings]
     query_embedding = embeddings[index_of_query_string]
     distances = distances_from_embeddings(query_embedding, embeddings, distance_metric="cosine")
     indices_of_nearest_neighbors = indices_of_nearest_neighbors_from_distances(distances)
     query_string = strings[index_of_query_string]
-    print(f"Source string: {query_string}")
+    print(f"--- Query: {query_string!r} ---")
     k_counter = 0
+    result: dict = {}
     for i in indices_of_nearest_neighbors:
         # skip any strings that are identical matches to the starting string
         if query_string == strings[i]:
@@ -54,15 +54,36 @@ def get_nearest_neighbors(
         if k_counter >= k_nearest_neighbors:
             break
         k_counter += 1
+        result[i] = round(distances[i], 4)
 
         print(
-            f"""
-            --- Recommendation #{k_counter} (nearest neighbor {k_counter} of {k_nearest_neighbors}) ---
-            String: {strings[i]}
-            Distance: {distances[i]:0.3f}"""
+            f"""\
+--- Recommendation #{k_counter} (nearest neighbor {k_counter} of {k_nearest_neighbors}). String index: {i}. Distance: {distances[i]:0.3f} ---
+            
+{strings[i]}"""
         )
 
-    return indices_of_nearest_neighbors
+    return result
+
+
+def get_nearest_neighbors_multiquery(queries, texts) -> dict[int, float]:
+    indices_distances_list: list[dict[int, float]] = []
+    for query in queries:
+        indices_distances_list.append(get_nearest_neighbors([query, *texts], 0))
+    indices_list: list[list[int]] = [list(d.keys()) for d in indices_distances_list]
+    distances_list: list[list[float]] = [list(d.values()) for d in indices_distances_list]
+    distance_sums: dict[int, float] = {}
+    for indices, distances in zip(indices_list, distances_list):
+        for index, distance in zip(indices, distances):
+            if not all(index in idcs for idcs in indices_list):
+                continue
+            if index not in distance_sums:
+                distance_sums[index] = 0
+            distance_sums[index] += distance
+    distance_averages: dict[int, float] = {
+        index: distance_sum / len(queries) for index, distance_sum in distance_sums.items()
+    }
+    return distance_averages
 
 
 def embed_column(column: "pandas.Series") -> "pandas.Series":
@@ -104,7 +125,7 @@ def visualize_embeddings(df: "pandas.DataFrame", *, embeddings_column, score_col
     from sklearn.manifold import TSNE
 
     matrix = np.array(df[embeddings_column].apply(literal_eval).to_list())
-    tsne = TSNE(n_components=2, perplexity=15, random_state=42, init='random', learning_rate=200)
+    tsne = TSNE(n_components=2, perplexity=15, random_state=42, init="random", learning_rate=200)
     vis_dims = tsne.fit_transform(matrix)
     colors = ["red", "darkorange", "gold", "turquoise", "darkgreen"]
     x = [x for x, y in vis_dims]
