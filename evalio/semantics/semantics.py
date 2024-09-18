@@ -4,17 +4,23 @@ import base64
 from typing import TYPE_CHECKING
 
 import openai
-from openai.embeddings_utils import cosine_similarity, distances_from_embeddings
+from cache import disk_cache
+from openai.embeddings_utils import (cosine_similarity,
+                                     distances_from_embeddings)
 from openai.embeddings_utils import get_embedding as openai_get_embedding
 from openai.embeddings_utils import indices_of_nearest_neighbors_from_distances
+
+import evalio.util
 
 if TYPE_CHECKING:
     import numpy
     import pandas
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
+TOKEN_COUNT_LIMITS = {DEFAULT_EMBEDDING_MODEL: 8192}
 
 
+@disk_cache.disk_cache("~/.cache/evalio")
 def get_embedding(text: str | "numpy.ndarray[float]") -> "numpy.ndarray[float]":
     import numpy as np
 
@@ -24,6 +30,83 @@ def get_embedding(text: str | "numpy.ndarray[float]") -> "numpy.ndarray[float]":
     base64_encoded = openai_get_embedding(text, engine=DEFAULT_EMBEDDING_MODEL, encoding_format="base64")
     buffer = base64.b64decode(base64_encoded)
     return np.frombuffer(buffer, dtype=np.float32)
+
+
+def get_split_embeddings(
+    long_text: str, query: str | "np.ndarray[float]", token_count_limit: int = None
+) -> dict["np.ndarray[float]", int]:
+    token_count_limit = token_count_limit or TOKEN_COUNT_LIMITS[DEFAULT_EMBEDDING_MODEL]
+    # long_text=Path(f).read_text()
+    long_text = long_text
+    # tokens=!ttok < $f
+    tokens = evalio.util.tokens_count(long_text)
+    # tokens=int(tokens[0])
+    print('\ntokens:', tokens)
+    if tokens >= token_count_limit:
+        chars_tokens_ratio = len(long_text) // tokens
+        chunk_len = (chars_tokens_ratio * token_count_limit) - 100
+        chunk_count = len(long_text) // chunk_len
+        chunk_embeddings = {}
+        for chunk_i in range(chunk_count):
+            print(f'   {chunk_i}')
+            chunk = long_text[chunk_i * chunk_len : (chunk_i + 1) * chunk_len]
+            chunk_embed = get_embedding(chunk, query)
+            chunk_embeddings[chunk_embed] = len(chunk)
+        return chunk_embeddings
+    return {get_embedding(long_text, query): len(long_text)}
+
+
+def get_split_distances(
+    long_text: str, query: str | "np.ndarray[float]", token_count_limit: int = None
+) -> dict[float, int]:
+    split_embeddings: dict = get_split_embeddings(long_text, query, token_count_limit)
+    split_distances = {
+        get_semantic_distance(embedding, query): chunk_len for embedding, chunk_len in split_embeddings.items()
+    }
+    return split_distances
+
+
+def get_weighted_split_distance(
+    long_text: str, query: str | "np.ndarray[float]", token_count_limit: int = None
+) -> float:
+    split_distances = get_split_distances(long_text, query, token_count_limit)
+    weighted_sum = 0
+    chunk_lengths_sum = sum(list(split_distances.values()))
+    chunk_lengths_avg = chunk_lengths_sum / len(split_distances)
+    for dist, chunk_len in split_distances.items():
+        weighted_dist = dist * (chunk_len / chunk_lengths_avg)
+        weighted_sum += weighted_dist
+    weighted_avg = weighted_sum / len(split_distances)
+    return weighted_avg
+
+
+# def get_split_distance(long_text: str, query: str, token_count_limit: int = None) -> float:
+#     token_count_limit = token_count_limit or TOKEN_COUNT_LIMITS[DEFAULT_EMBEDDING_MODEL]
+#     # long_text=Path(f).read_text()
+#     long_text = long_text
+#     # tokens=!ttok < $f
+#     tokens = evalio.util.tokens_count(long_text)
+#     # tokens=int(tokens[0])
+#     print('\ntokens:', tokens)
+#     if tokens >= token_count_limit:
+#         chars_tokens_ratio = len(long_text) // tokens
+#         chunk_len = (chars_tokens_ratio * token_count_limit) - 100
+#         chunk_count = len(long_text) // chunk_len
+#         chunk_distances = {}
+#         for chunk_i in range(chunk_count):
+#             print(f'   {chunk_i}')
+#             chunk = long_text[chunk_i * chunk_len: (chunk_i + 1) * chunk_len]
+#             chunk_dist = get_semantic_distance(chunk, query)
+#             chunk_distances[chunk_dist] = len(chunk)
+#         weighted_sum = 0
+#         chunk_lengths_sum = sum(list(chunk_distances.values()))
+#         chunk_lengths_avg = chunk_lengths_sum / len(chunk_distances)
+#         for dist, chunk_len in chunk_distances.items():
+#             weighted_dist = dist * (chunk_len / chunk_lengths_avg)
+#             weighted_sum += weighted_dist
+#         weighted_avg = weighted_sum / len(chunk_distances)
+#         return weighted_avg
+#     return get_semantic_distance(long_text, query)
 
 
 def get_semantic_distance(
@@ -37,14 +120,14 @@ def get_semantic_distance(
 
 
 def get_nearest_neighbors(
-    strings: list[str | "numpy.ndarray[float]"], index_of_query_string: int, k_nearest_neighbors: int = 5
+    strings: list[str | "numpy.ndarray[float]"], index_of_query_string: int, k_nearest_neighbors: int = 5, quiet=False
 ) -> dict[int, float]:
     embeddings = [get_embedding(string) for string in strings]
     query_embedding = embeddings[index_of_query_string]
     distances = distances_from_embeddings(query_embedding, embeddings, distance_metric="cosine")
     indices_of_nearest_neighbors = indices_of_nearest_neighbors_from_distances(distances)
     query_string = strings[index_of_query_string]
-    print(f"--- Query: {query_string!r} ---")
+    quiet or print(f"--- Query: {query_string!r} ---")
     k_counter = 0
     result: dict = {}
     for i in indices_of_nearest_neighbors:
@@ -56,7 +139,7 @@ def get_nearest_neighbors(
         k_counter += 1
         result[i] = round(distances[i], 4)
 
-        print(
+        quiet or print(
             f"""\
 --- Recommendation #{k_counter} (nearest neighbor {k_counter} of {k_nearest_neighbors}). String index: {i}. Distance: {distances[i]:0.3f} ---
             
@@ -66,10 +149,14 @@ def get_nearest_neighbors(
     return result
 
 
-def get_nearest_neighbors_multiquery(queries, texts) -> dict[int, float]:
+def get_nearest_neighbors_multiquery(
+    queries: list[str], texts: list[str], k_nearest_neighbors: int = 5, quiet=False
+) -> dict[int, float]:
     indices_distances_list: list[dict[int, float]] = []
     for query in queries:
-        indices_distances_list.append(get_nearest_neighbors([query, *texts], 0))
+        indices_distances_list.append(
+            get_nearest_neighbors([query, *texts], 0, k_nearest_neighbors=k_nearest_neighbors, quiet=quiet)
+        )
     indices_list: list[list[int]] = [list(d.keys()) for d in indices_distances_list]
     distances_list: list[list[float]] = [list(d.values()) for d in indices_distances_list]
     distance_sums: dict[int, float] = {}
