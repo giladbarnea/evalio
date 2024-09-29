@@ -17,7 +17,15 @@ if TYPE_CHECKING:
     import pandas
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-large"
-TOKEN_COUNT_LIMITS = {DEFAULT_EMBEDDING_MODEL: 8192}
+TOKEN_COUNT_LIMITS = {"text-embedding-3-large": 8192}
+SEMANTIC_DISTANCE_LIMITS = {
+    "text-embedding-3-large": {
+        "SAME": -1.1920928955078125e-07,
+        "SAME_BUT_CASE": 0.03991210460662842,
+        "SAME_BUT_DIFFERENT": 0.2842825651168823,
+        "DIFFERENT": 0.91707993298769,
+    }
+}
 
 
 @disk_cache.disk_cache("~/.cache/evalio")
